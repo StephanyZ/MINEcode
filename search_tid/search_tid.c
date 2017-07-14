@@ -19,6 +19,8 @@ int main(int argc,char *argv[]){
     void copy_stream(FILE*,int,int,char *);
     void print_hex(char *,int);
     void paste_stream(char*,int,FILE*);
+    int search_tid_in_Data(FILE *,int,int,int);
+    int search_tid_in_head(FILE *);
     FILE *fp,*output;
     if((fp=fopen(argv[1],"r"))==NULL){
         printf("error:can not open file");
@@ -65,7 +67,9 @@ int main(int argc,char *argv[]){
     int offset_head=0;
     count=0;
     int Len=0;
+    int len_gtp=0;
     int tid=0;
+    int size;
     while(fseek(fp,offset,0)==0){
         if(fread(mac_head,14,1,fp)!=1){
             printf("error");
@@ -97,17 +101,18 @@ int main(int argc,char *argv[]){
             printf("read end of file");
             return 0;
         }
+        fseek(fp,offset,0);
         printf("1.offset:%d\n",offset);
         printf("flag:%.2x\n",gtp_head->flag);
         printf("type:%.2x\n",gtp_head->Message_Type);
         printf("lenth:%.2x(%d)\n",(unsigned short)ntohs(gtp_head->Len_Of_GTPData),(unsigned short)ntohs(gtp_head->Len_Of_GTPData));
         Len=(unsigned short)ntohs(ip_head->Len_Of_IPData);
         tid=(unsigned int)ntohl(gtp_head->TEID);
+        len_gtp=(unsigned short)ntohs(gtp_head->Len_Of_GTPData);
         offset+=Len-12;
-        if(TID==0){
-        }
-        if(TID==tid){
-            printf("%d----------------yes!\n",count);
+        size=offset-offset_head;
+        if((search_tid_in_head(fp)==TID)||(search_tid_in_Data(fp,offset-Len+12+12,len_gtp-8,TID)==1)){
+            printf("----------------------------------count:%d\n",count);
             char *p;
             p=(char *)malloc((offset-offset_head)*sizeof(char));
             copy_stream(fp,offset_head-16,offset-offset_head,p);
@@ -119,8 +124,21 @@ int main(int argc,char *argv[]){
             paste_stream(p,offset-offset_head,output);
             fclose(output);
         }
-    printf("tid:%.8x\n",(unsigned int)ntohl(gtp_head->TEID));
-    printf("2.offset:%d\noffset_head:%d\n\n",offset,offset_head);
+        /*if(TID==tid){
+            printf("%d----------------yes!\n",count);
+            char *p;
+            p=(char *)malloc((offset-offset_head)*sizeof(char));
+            copy_stream(fp,offset_head-16,offset-offset_head,p);
+            print_hex(p,offset-offset_head);
+            if((output=fopen(outfilename,"a+"))==NULL){
+                printf("open file failed!");
+                return 0;
+            }
+            paste_stream(p,offset-offset_head,output);
+            fclose(output);
+        }*/
+        printf("tid:%.8x\n",(unsigned int)ntohl(gtp_head->TEID));
+        printf("2.offset:%d\noffset_head:%d\n\n",offset,offset_head);
     }
     printf("\ncount:%d\n",count);
     fclose(fp);
@@ -158,6 +176,7 @@ void copy_stream(FILE *raw,int offset,int size,char *buf){
 }
 int search_tid_in_head(FILE *fp){
     GTP_t *gtp_head;
+    printf("--------------------TID_offset:%d\n",(int)ftell(fp));
     gtp_head=(struct GTP_t*)malloc(sizeof(struct GTP_t));
     int tid;
     if(fread(gtp_head,8,1,fp)!=1){
@@ -165,31 +184,55 @@ int search_tid_in_head(FILE *fp){
         return -1;
     }  
     tid=(unsigned int)ntohl(gtp_head->TEID);
+    printf("-----------------------TID:%.4x\n",tid);
+    fseek(fp,ftell(fp)+4,0);
     return tid;
 }
 int search_tid_in_Data(FILE *fp,int offset,int size,int TID){
+    printf("---------offset:%d-----------TID_Data_offset:%d\n",offset,(int)ftell(fp));
     IEHead_t *ie_head;
-    int tid;
+    typedef struct Tid{
+        int teid;
+    }Tid;
+    Tid *tid;
+    tid=(struct Tid*)malloc(sizeof(struct Tid));
     int fp_offset=0;
     int cur_offset=0;
     ie_head=(struct IEHead_t*)malloc(sizeof(struct IEHead_t));
     fp_offset=ftell(fp);
     fseek(fp,offset,SEEK_SET);
     cur_offset=offset;
-    if(TID==search_tid_in_head(fp)){
-        return 1;
-    }else{
-        cur_offset+=12;
-        while((cur_offset-offset)<size){
+    while((cur_offset-offset)<size){
+        fseek(fp,cur_offset,SEEK_SET);
+        if(fread(ie_head,4,1,fp)!=1){
+            printf("errorr in fread ie_head\n");
+           // fseek(fp,fp_offset,SEEK_SET);
+            return -1;
+        }
+        printf("-----offset_cur:%d------IEtype:%d\n",cur_offset,ie_head->IE_Type);
+        if((unsigned char)(ie_head->IE_Type)==87){
+            cur_offset+=5;
             fseek(fp,cur_offset,SEEK_SET);
-            if(fread(ie_head,4,1,fp)!=1){
-                printf("errorr in fread ie_head\n");
+            if(fread(tid,4,1,fp)!=1){
+                printf("error in fread IE_type\n");
+                //fseek(fp,fp_offset,SEEK_SET);
                 return -1;
             }
-            if((unsigned char)(ie_head->IE_Type)==87){
-                if(fread(tid,4,1,fp))
+            printf("---------------------------DATA_TID:%.4x\n",(unsigned int)ntohl(tid->teid));
+            cur_offset-=5;
+            fseek(fp,cur_offset,SEEK_SET); 
+            if((unsigned int)ntohl(tid->teid)==TID){
+               // fseek(fp,fp_offset,SEEK_SET);
+                return 1;
             }
-            cur_offset+=4+ie_head->IE_Len;
         }
+      /*  if((unsigned char)(ie_head->IE_Type)==93){
+            if(search_tid_in_Data(fp,cur_offset,ie_head->IE_Len,TID)==1){
+               // fseek(fp,fp_offset,SEEK_SET);
+                return 1;
+            }
+        }*/
+        cur_offset+=4+ie_head->IE_Len;
     }
+    fseek(fp,fp_offset,SEEK_SET);
 }

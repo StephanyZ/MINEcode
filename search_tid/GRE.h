@@ -34,13 +34,13 @@ typedef struct UDPHeader_t{
 
 typedef struct GTP_t{
     char flag;
-    char Message_Type;
+    char Message_Type;//total-4
     short Len_Of_GTPData;
     int TEID;
 }GTP_t;
 typedef struct IEHead_t{
     char IE_Type;
-    short IE_Len;
+    short IE_Len; //Total=4+data
     char Flag;
 }IEHead_t;
 #endif
