@@ -1,0 +1,5 @@
+执行步骤：
+>make (此时成功执行会出现search_teid和search_teid.o两个文件)
+>./search_teid  +pcap文件名  +teid号
+
+如果成功的话，当前文件夹下会生成一个能用wireshark打开的 teid.pcap 包
