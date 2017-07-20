@@ -7,7 +7,7 @@
 
 #ifndef _GRE_H
 #define _GRE_H
-  
+ 
 typedef struct pcap_file_header{
         int magic;
         short version_major;
@@ -61,13 +61,18 @@ typedef struct GTP_t{
     short Len_Of_GTPData;
     int TEID;
 }GTP_t;
+#pragma pack(push)
+#pragma pack(1)
 typedef struct IEHead_t{
     char IE_Type;
     short IE_Len; //Total=4+data
-    char Flag;
+    short Flag;
 }IEHead_t;
+#pragma pack(pop)
 typedef struct _802_1Q_LAN{
     short Flag;
     short Type;
 }_802_1Q_LAN;
+
 #endif
+

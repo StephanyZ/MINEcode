@@ -10,25 +10,21 @@
 #include<string.h>
 #include<arpa/inet.h>
 #define N 1024
-int teid_size;
-typedef struct save_TEID
-{
+int size;
+typedef struct save_TEID{
     int teid_count;
     int teid[20];
-} save_TEID;
-typedef struct cur_teid_in_pcap
-{
+}save_TEID;
+typedef struct cur_teid_in_pcap{
     char Message_Type;
-    unsigned int head_teid;
-    unsigned int s11_sgw_teid;
-    unsigned int s11_mme_teid;
-    unsigned int s1_u_sgw;
-    unsigned int s1_u_enodeB;
+    int head_teid;
+    int s11_mme_teid;
+    int s1_u_sgw;
+    int s1_u_enodeB;
     int flag;
-} cur_teid_in_pcap;
+}cur_teid_in_pcap;
 struct save_TEID store_teid;
 struct cur_teid_in_pcap *cur_teid_in_p;
-int count=0;
 int main(int argc,char *argv[])
 {
     struct MACHeader_t *mac_head;
@@ -41,10 +37,7 @@ int main(int argc,char *argv[])
     struct _802_1Q_LAN *lan;
     void copy_stream(FILE*,int,int,char *);
     void print_hex(char *,int);
-    void printf_cur_teid(struct cur_teid_in_pcap*);
     void paste_stream(char*,int,FILE*);
-    int TEID_Is_In(int,int*,int);
-    int TEID_Is_Stored(int,struct save_TEID);
     int search_tid_in_Data(FILE *,int,int,int *);
     int search_tid_in_head(FILE *,int *);
     FILE *fp,*output;
@@ -66,7 +59,8 @@ int main(int argc,char *argv[])
     printf(head_buf,24);
     paste_stream(head_buf,24,output);
     fclose(output);
- //   printf("%s\n",argv[1]);
+    printf("%s\n",argv[1]);
+    int count=0;
     int offset=24;
     char ch;
     char buf[3*N]="";
@@ -80,7 +74,7 @@ int main(int argc,char *argv[])
     printf("\n");
     fseek(fp,0,0);
     int *TID;
-    teid_size=argc-2;
+    size=argc-2;
     TID=(int *)malloc(sizeof(int)*(argc-2));
     for(int i=0; i<argc-2; i++)
     {
@@ -102,15 +96,11 @@ int main(int argc,char *argv[])
     int FF=0;
     int teid_count=0;
     teid_count=argc-2;
-    int num=0;
-    while(num<3)
+
+    while(1)
     {
-        offset=24;
-        count=0;
-        fseek(fp,0,0);
         while(fseek(fp,offset,0)==0)
         {
-            memset(cur_teid_in_p,0,sizeof(struct cur_teid_in_pcap));
             offset_head=offset;
             fread(p_head,16,1,fp);
             len_pcap=(unsigned int)p_head->capture_len;
@@ -120,7 +110,7 @@ int main(int argc,char *argv[])
             if(fread(mac_head,14,1,fp)!=1)
             {
                 printf("pcap end\n");
-                break;
+                return 0;
             }
             /* printf("mac_source:");
              printf("%.2x:",mac_head->Source_MAC[0]);
@@ -197,19 +187,12 @@ int main(int argc,char *argv[])
                 cur_teid_in_p->flag=0;
                 // printf("-------------------------------count:%d\n",count);
                 // printf("Message_Type:%.2x,%d\n",(unsigned char)gtp_head->Message_Type,(unsigned char)gtp_head->Message_Type);
-                int a=search_tid_in_head(fp,TID);
-                int b=search_tid_in_Data(fp,offset-Len+12+12,len_gtp-8,TID);
-                if((unsigned char)gtp_head->Message_Type!=0xff&&(a==1)||((unsigned char)gtp_head->Message_Type!=0xff&&b==1))
+                if((unsigned char)gtp_head->Message_Type!=0xff&&((search_tid_in_head(fp,TID)==1)||((unsigned char)gtp_head->Message_Type!=0xff&&(search_tid_in_Data(fp,offset-Len+12+12,len_gtp-8,TID)==1))))
                 {
                     printf("--------------------------------------catch_count:%d\n",count);
-                    printf_cur_teid(cur_teid_in_p);
                     char *p;
                     p=(char *)malloc((offset-offset_head)*sizeof(char));
                     copy_stream(fp,offset_head,len_pcap+16,p);
-                    if(count==7)
-                    {
-                       // print_hex(p,len_pcap+16);
-                    }
                     //print_hex(p,len_pcap+16);
                     if((output=fopen(outfilename,"a+"))==NULL)
                     {
@@ -218,13 +201,6 @@ int main(int argc,char *argv[])
                     }
                     paste_stream(p,len_pcap+16,output);
                     fclose(output);
-                }
-                else
-                {
-                    if(cur_teid_in_p->flag==1&&(unsigned char)gtp_head->Message_Type!=0xff)
-                    {
-                        printf("error------------------------------------------error---count:%d\n",count);
-                    }
                 }
                 //printf("tid:%.8x\n",(unsigned int)ntohl(gtp_head->TEID));
                 //printf("2.offset:%d\noffset_head:%d\n\n",offset,offset_head);
@@ -237,28 +213,8 @@ int main(int argc,char *argv[])
                 }
                 offset+=Len-12;
             }
-            if(cur_teid_in_p->flag==1) {
-                if(cur_teid_in_p->Message_Type==33){
-                    if(TEID_Is_In(cur_teid_in_p->head_teid,TID,teid_size)==0&&TEID_Is_Stored(cur_teid_in_p->head_teid,store_teid)==0&&cur_teid_in_p->head_teid!=0){
-                        store_teid.teid_count++;
-                        store_teid.teid[store_teid.teid_count-1]=cur_teid_in_p->head_teid;
-                        printf("store_teid[%d]:%.4x\n",store_teid.teid_count-1,cur_teid_in_p->head_teid);
-                    }else if(TEID_Is_In(cur_teid_in_p->s11_sgw_teid,TID,teid_size)==0&&TEID_Is_Stored(cur_teid_in_p->s11_sgw_teid,store_teid)==0&&cur_teid_in_p->s11_sgw_teid!=0){
-                        store_teid.teid_count++;
-                        store_teid.teid[store_teid.teid_count-1]=cur_teid_in_p->s11_sgw_teid;
-                        printf("store_teid[%d]:%.4x\n",store_teid.teid_count-1,cur_teid_in_p->s11_sgw_teid);
-                    }
-                }else if(cur_teid_in_p->Message_Type==35){
-                    if(TEID_Is_In(cur_teid_in_p->head_teid,TID,teid_size)==0&&TEID_Is_Stored(cur_teid_in_p->head_teid,store_teid)==0&&cur_teid_in_p->head_teid!=0){
-                        store_teid.teid_count++;
-                        store_teid.teid[store_teid.teid_count-1]=cur_teid_in_p->head_teid;
-                        printf("store_teid[%d]:%.4x\n",store_teid.teid_count-1,cur_teid_in_p->head_teid);
-                    }
-                }
-            }
             offset=offset_head+len_pcap+16;
         }
-        num++;
     }
     fclose(fp);
     return 0;
@@ -303,7 +259,7 @@ void copy_stream(FILE *raw,int offset,int size,char *buf)
 }
 int search_tid_in_head(FILE *fp,int *TID)
 {
-    int TEID_Is_In(int,int*,int);
+    int TEID_Is_In(int,int*);
     GTP_t *gtp_head;
     //printf("--------------------TID_offset:%d\n",(int)ftell(fp));
     gtp_head=(struct GTP_t*)malloc(sizeof(struct GTP_t));
@@ -315,7 +271,7 @@ int search_tid_in_head(FILE *fp,int *TID)
     }
     tid=(unsigned int)ntohl(gtp_head->TEID);
     cur_teid_in_p->head_teid=tid;
-    if(TEID_Is_In(tid,TID,teid_size)==1)
+    if(TEID_Is_In(tid,TID)==1)
     {
         cur_teid_in_p->flag=1;
         //printf("-----------------------TID:%.4x\n",tid);
@@ -326,7 +282,8 @@ int search_tid_in_head(FILE *fp,int *TID)
 }
 int search_tid_in_Data(FILE *fp,int offset,int size,int *TID)
 {
-    int TEID_Is_In(int ,int*,int);
+    int TEID_Is_In(int ,int*);
+    //printf("---------offset:%d-----------TID_Data_offset:%d\n",offset,(int)ftell(fp));
     IEHead_t *ie_head;
     int FF=0;
     typedef struct Tid
@@ -340,24 +297,20 @@ int search_tid_in_Data(FILE *fp,int offset,int size,int *TID)
     ie_head=(struct IEHead_t*)malloc(sizeof(struct IEHead_t));
     fp_offset=ftell(fp);
     fseek(fp,offset,SEEK_SET);
-    //char5i=(struct char5*)malloc(sizeof(struct char5));
     cur_offset=offset;
-    char fflag=-1;
     while((cur_offset-offset)<size)
     {
-        fflag=-1;
         fseek(fp,cur_offset,SEEK_SET);
-        
-        if(fread(ie_head,5,1,fp)!=1)
+        if(fread(ie_head,4,1,fp)!=1)
         {
             printf("errorr in fread ie_head\n");
             // fseek(fp,fp_offset,SEEK_SET);
             return -1;
         }
-       
+        //printf("-----offset_cur:%d------IEtype:%d\n",cur_offset,ie_head->IE_Type);
+        cur_teid_in_p->flag=ie_head->Flag&0x3f;
         if((unsigned char)(ie_head->IE_Type)==87)
         {
-            fflag=(unsigned char)ntohs(ie_head->Flag)&0x3f;
             cur_offset+=5;
             fseek(fp,cur_offset,SEEK_SET);
             if(fread(tid,4,1,fp)!=1)
@@ -366,75 +319,41 @@ int search_tid_in_Data(FILE *fp,int offset,int size,int *TID)
                 //fseek(fp,fp_offset,SEEK_SET);
                 return -1;
             }
-          
-            if(fflag==0)
-            {
-               
-                if(cur_teid_in_p->s1_u_enodeB==0)
-                {
-                    cur_teid_in_p->s1_u_enodeB=(unsigned int)ntohl(tid->teid);
-                }
+            if(cur_teid_in_p->flag==0){
+                cur_teid_in_p->s1_u_enodeB=tid->teid;
             }
-            else if(fflag==11)
-            {
-                if(cur_teid_in_p->s11_sgw_teid==0)
-                {
-                    cur_teid_in_p->s11_sgw_teid=(unsigned int)ntohl(tid->teid);
-                   
-                }
-            }
-            else if(fflag==1)
-            {
-                if(cur_teid_in_p->s1_u_sgw==0)
-                {
-                    cur_teid_in_p->s1_u_sgw=(unsigned int)ntohl(tid->teid);
-                }
-            }
-            else if(fflag==10)
-            {
-                if(cur_teid_in_p->s11_mme_teid==0)
-                {
-                    cur_teid_in_p->s11_mme_teid=(unsigned int)ntohl(tid->teid);
-                    
-                }
-            }
+            //printf("------------------------------DATA_TID:%.4x\n",(unsigned int)ntohl(tid->teid));
             cur_offset-=5;
             fseek(fp,cur_offset,SEEK_SET);
-            if(TEID_Is_In((unsigned int)ntohl(tid->teid),TID,teid_size)==1)
+            if(TEID_Is_In((unsigned int)ntohl(tid->teid),TID)==1)
             {
                 FF=1;
                 // fseek(fp,fp_offset,SEEK_SET);
-                // return 1;
+               // return 1;
             }
         }
         if((unsigned char)(ie_head->IE_Type)==93)
         {
-            if(search_tid_in_Data(fp,cur_offset+4,(unsigned short)ntohs(ie_head->IE_Len)+4,TID)==1)
+            if(search_tid_in_Data(fp,cur_offset+4,(unsigned short)ie_head->IE_Len+4,TID)==1)
             {
                 FF=1;
                 // fseek(fp,fp_offset,SEEK_SET);
                 //return 1;
             }
         }
-        
-        cur_offset+=4+(unsigned short)ntohs(ie_head->IE_Len);
+        cur_offset+=4+(unsigned short)ie_head->IE_Len;
     }
-  
     fseek(fp,fp_offset,SEEK_SET);
-    if(FF==1)
-    {
-        cur_teid_in_p->flag=1;
+    if(FF==1){
         return 1;
-    }
-    else
-    {
+    }else{
         return 0;
     }
 }
-int TEID_Is_In(int TEID,int *TID,int count)
+int TEID_Is_In(int TEID,int *TID)
 {
     int i=0;
-    while(i<count)
+    while(i<size)
     {
         if(TID[i]==TEID)
         {
@@ -443,25 +362,5 @@ int TEID_Is_In(int TEID,int *TID,int count)
         i++;
     }
     return 0;
-}
-int TEID_Is_Stored(int TEID,struct save_TEID store_teid){
-    int i=0;
-    while(i<store_teid.teid_count){
-        if(store_teid.teid[i]==TEID){
-            return 1;
-        }
-        i++;
-    }
-    return 0;
-}
-void printf_cur_teid(struct cur_teid_in_pcap *c_teid)
-{
-    printf("Message_Type:%d\n",c_teid->Message_Type);
-    printf("head_teid:%.4x\n",c_teid->head_teid);
-    printf("s11_sgw_teid:%.4x\n",(c_teid->s11_sgw_teid));
-    printf("s11_mme_teid:%.4x\n",c_teid->s11_mme_teid);
-    printf("s1_u_sgw:%.4x\n",c_teid->s1_u_sgw);
-    printf("s1_u_enodeB:%.4x\n",c_teid->s1_u_enodeB);
-    printf("flag:%d\n",c_teid->flag);
 }
 
